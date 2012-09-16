@@ -9,6 +9,7 @@ import java.util.Set;
 
 import redis.clients.jedis.BinaryClient.LIST_POSITION;
 import redis.clients.jedis.exceptions.JedisDataException;
+import redis.clients.jedis.exceptions.JedisTransactionAbortedException;
 
 public class BinaryTransaction extends Queable {
     protected Client client = null;
@@ -27,7 +28,7 @@ public class BinaryTransaction extends Queable {
 
         List<Object> unformatted = client.getObjectMultiBulkReply();
         if (unformatted == null) {
-            return null;
+    		throw new JedisTransactionAbortedException("Transaction aborted");
         }
         List<Object> formatted = new ArrayList<Object>();
         for (Object o : unformatted) {

@@ -17,6 +17,7 @@ import redis.clients.jedis.Transaction;
 import redis.clients.jedis.TransactionBlock;
 import redis.clients.jedis.Protocol.Keyword;
 import redis.clients.jedis.exceptions.JedisDataException;
+import redis.clients.jedis.exceptions.JedisTransactionAbortedException;
 
 public class TransactionCommandsTest extends JedisCommandTestBase {
     final byte[] bfoo = { 0x01, 0x02, 0x03, 0x04 };
@@ -117,8 +118,12 @@ public class TransactionCommandsTest extends JedisCommandTestBase {
         nj.disconnect();
 
         t.set("mykey", "foo");
-        List<Object> resp = t.exec();
-        assertEquals(null, resp);
+        List<Object> resp = null;
+        try {
+			resp = t.exec();
+	        fail();
+        } catch (JedisTransactionAbortedException e) {
+        }
         assertEquals("bar", jedis.get("mykey"));
 
         // Binary
@@ -131,9 +136,43 @@ public class TransactionCommandsTest extends JedisCommandTestBase {
         nj.disconnect();
 
         t.set(bmykey, bfoo);
-        resp = t.exec();
-        assertEquals(null, resp);
+        try {
+        	resp = t.exec();
+	    } catch (JedisTransactionAbortedException e) {
+	    }
         assertTrue(Arrays.equals(bbar, jedis.get(bmykey)));
+    }
+    
+    @Test
+    public void watch2() throws UnknownHostException, IOException {
+        nj.connect();
+        nj.auth("foobared");
+        nj.set("mykey", "bar");
+        nj.disconnect();
+
+        nj.connect();
+        nj.auth("foobared");
+        nj.watch("mykey");
+        Transaction njt = nj.multi();
+        
+        jedis.watch("mykey");
+        Transaction t = jedis.multi();
+        t.set("mykey", "foo");
+        Response<String> getResponse = t.get("mykey");
+        List<Object> transactionResp = t.exec();
+        assertNotSame(null, transactionResp);
+        String value = getResponse.get();
+        assertEquals("foo", value);
+        
+        njt.set("mykey", "foo2");
+        Response<String> njGetResponse = t.get("mykey");
+        try {
+	        List<Object> njTransactionResp = njt.exec();
+	        fail();
+	        String njValue = njGetResponse.get();
+	        assertEquals("foo2", njValue);
+        } catch (JedisTransactionAbortedException e) {        	
+        }
     }
 
     @Test
@@ -291,8 +330,10 @@ public class TransactionCommandsTest extends JedisCommandTestBase {
         jedis2.select(1);
         jedis2.set("foo", "bar2");
         
-        List<Object> results = t.exec();
-        
-        assertNull(results);
+        try {
+        	List<Object> results = t.exec();
+        	fail();
+        } catch (JedisTransactionAbortedException e) {        	
+        }
     }
 }
